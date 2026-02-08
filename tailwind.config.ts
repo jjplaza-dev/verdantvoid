@@ -57,6 +57,13 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // Game-specific semantic colors
+        health: "hsl(var(--health))",
+        energy: "hsl(var(--energy))",
+        gold: "hsl(var(--gold))",
+        armor: "hsl(var(--armor))",
+        attack: "hsl(var(--attack))",
+        defense: "hsl(var(--defense))",
       },
       borderRadius: {
         lg: "var(--radius)",
