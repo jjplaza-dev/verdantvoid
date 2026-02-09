@@ -2,6 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Shield, Sword, Zap } from "lucide-react";
+import { useGameStore } from "@/stores/gameStore";
 
 const characters = [
   {
@@ -59,20 +60,23 @@ const characters = [
 
 const CharacterSelect = () => {
   const navigate = useNavigate();
+  const { initializeCharacter, saveProgress } = useGameStore();
 
   const handleSelectCharacter = (characterId: string) => {
-    // TODO: Store selected character and start new game
-    console.log("Selected character:", characterId);
-    // navigate("/map");
+    const character = characters.find(c => c.id === characterId);
+    if (!character) return;
+
+    initializeCharacter(characterId, character.baseStats);
+    saveProgress();
+    navigate("/tree-select");
   };
 
   return (
     <div className="min-h-screen bg-background px-4 py-8">
-      {/* Back button */}
       <Button
         variant="ghost"
         className="absolute left-4 top-4 font-title"
-        onClick={() => navigate("/")}
+        onClick={() => navigate("/difficulty-select")}
       >
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back

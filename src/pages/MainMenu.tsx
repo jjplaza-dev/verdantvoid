@@ -51,15 +51,7 @@ const MainMenu = () => {
     };
   }, []);
 
-  const handleNewGame = () => {
-    if (!user) {
-      navigate("/auth");
-    } else {
-      navigate("/character-select");
-    }
-  };
-
-  const handleLoadGame = () => {
+  const handlePlay = () => {
     if (!user) {
       navigate("/auth");
     } else {
@@ -108,20 +100,11 @@ const MainMenu = () => {
           className="flex w-full max-w-xs flex-col gap-4"
         >
           <Button
-            onClick={handleNewGame}
+            onClick={handlePlay}
             size="lg"
             className="h-14 text-lg font-title tracking-wide fantasy-border hover:card-glow transition-shadow duration-300"
           >
-            New Game
-          </Button>
-
-          <Button
-            onClick={handleLoadGame}
-            variant="secondary"
-            size="lg"
-            className="h-14 text-lg font-title tracking-wide fantasy-border hover:card-glow transition-shadow duration-300"
-          >
-            Load Game
+            {user ? "Play" : "Sign In to Play"}
           </Button>
 
           <Button
