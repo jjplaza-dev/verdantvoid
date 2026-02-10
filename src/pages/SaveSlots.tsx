@@ -1,56 +1,66 @@
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Save, Trash2, Play } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { ArrowLeft, Save, Trash2, Play, Coins } from "lucide-react";
 import { useGameStore, DIFFICULTIES } from "@/stores/gameStore";
 
 const SaveSlots = () => {
   const navigate = useNavigate();
-  const { saveSlots, setActiveSlot, loadSlot } = useGameStore();
+  const { saveSlots, setActiveSlot, loadSlot, createSaveSlot, deleteSaveSlot } = useGameStore();
+  
+  const [createModal, setCreateModal] = useState<number | null>(null);
+  const [deleteModal, setDeleteModal] = useState<number | null>(null);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [deleteInput, setDeleteInput] = useState("");
 
   const handleSlotClick = (slotId: number) => {
     const slot = saveSlots.find(s => s.id === slotId);
     if (!slot) return;
 
-    setActiveSlot(slotId);
-
     if (slot.isEmpty) {
-      // Empty slot - go to difficulty select to start new game
-      navigate("/difficulty-select");
-    } else if (slot.inTreeInstance) {
-      // Has ongoing tree progress - go directly to tree instance
-      loadSlot(slotId);
-      navigate("/tree-instance");
+      setCreateModal(slotId);
+      setUsernameInput("");
     } else {
-      // Has save but not in tree - go to tree select
+      setActiveSlot(slotId);
       loadSlot(slotId);
-      navigate("/tree-select");
+      if (slot.inTreeInstance) {
+        navigate("/tree-instance");
+      } else {
+        navigate("/summoner-menu");
+      }
     }
   };
 
-  const handleDeleteSlot = (slotId: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    // TODO: Implement delete with confirmation
-    console.log("Delete slot:", slotId);
+  const handleCreateSubmit = () => {
+    if (!usernameInput.trim() || createModal === null) return;
+    createSaveSlot(createModal, usernameInput.trim());
+    setCreateModal(null);
+    navigate("/difficulty-select");
+  };
+
+  const handleDeleteSubmit = () => {
+    if (deleteModal === null) return;
+    const slot = saveSlots.find(s => s.id === deleteModal);
+    if (!slot || deleteInput !== slot.username) return;
+    deleteSaveSlot(deleteModal);
+    setDeleteModal(null);
+    setDeleteInput("");
   };
 
   return (
     <div className="min-h-screen bg-background px-4 py-8">
-      <Button
-        variant="ghost"
-        className="absolute left-4 top-4 font-title"
-        onClick={() => navigate("/")}
-      >
+      <Button variant="ghost" className="absolute left-4 top-4 font-title" onClick={() => navigate("/")}>
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back
       </Button>
 
       <div className="mx-auto max-w-2xl">
         <div className="mb-8 text-center">
-          <h1 className="mb-2 font-title text-4xl font-bold glow-gold">Save Slots</h1>
-          <p className="font-body text-muted-foreground">
-            Choose a slot to continue or start a new adventure
-          </p>
+          <h1 className="mb-2 font-title text-4xl font-bold glow-gold">Summoner Saves</h1>
+          <p className="font-body text-muted-foreground">Choose a slot to continue or start a new adventure</p>
         </div>
 
         <div className="flex flex-col gap-4">
@@ -70,11 +80,21 @@ const SaveSlots = () => {
                     )}
                   </div>
                   <div>
-                    <CardTitle className="font-title">Slot {slot.id}</CardTitle>
+                    <CardTitle className="font-title">
+                      {slot.isEmpty ? `Slot ${slot.id}` : slot.username}
+                    </CardTitle>
                     <CardDescription className="font-body">
                       {slot.isEmpty 
                         ? "Empty - Start New Game" 
-                        : `${slot.characterId} - ${slot.difficulty ? DIFFICULTIES[slot.difficulty]?.label : "Unknown"}`
+                        : (
+                          <span className="flex items-center gap-3">
+                            <span>{slot.difficulty ? DIFFICULTIES[slot.difficulty]?.label : "Unknown"}</span>
+                            <span className="flex items-center gap-1">
+                              <Coins className="h-3 w-3 text-gold" />
+                              <span className="text-gold">{slot.credits}</span>
+                            </span>
+                          </span>
+                        )
                       }
                     </CardDescription>
                   </div>
@@ -84,7 +104,11 @@ const SaveSlots = () => {
                     variant="ghost"
                     size="icon"
                     className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={(e) => handleDeleteSlot(slot.id, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteModal(slot.id);
+                      setDeleteInput("");
+                    }}
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
@@ -93,9 +117,9 @@ const SaveSlots = () => {
               {!slot.isEmpty && (
                 <CardContent>
                   <div className="flex gap-4 text-sm font-body text-muted-foreground">
-                    <span>Tree: {(slot.currentTreeIndex ?? 0) + 1}</span>
-                    <span>HP: {slot.currentHealth}/{slot.maxHealth}</span>
-                    <span>Nodes: {slot.completedNodes.length}</span>
+                    {slot.inTreeInstance && <span>Tree: {(slot.currentTreeIndex ?? 0) + 1}</span>}
+                    {slot.currentHealth !== null && <span>HP: {slot.currentHealth}/{slot.maxHealth}</span>}
+                    {slot.completedNodes.length > 0 && <span>Nodes: {slot.completedNodes.length}</span>}
                   </div>
                 </CardContent>
               )}
@@ -103,6 +127,55 @@ const SaveSlots = () => {
           ))}
         </div>
       </div>
+
+      {/* Create Username Modal */}
+      <Dialog open={createModal !== null} onOpenChange={() => setCreateModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-title">Create Summoner</DialogTitle>
+            <DialogDescription className="font-body">Enter a username for this save slot</DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="Summoner name..."
+            value={usernameInput}
+            onChange={(e) => setUsernameInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
+            className="font-body"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateModal(null)}>Cancel</Button>
+            <Button onClick={handleCreateSubmit} disabled={!usernameInput.trim()}>Continue</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={deleteModal !== null} onOpenChange={() => setDeleteModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-title text-destructive">Delete Save</DialogTitle>
+            <DialogDescription className="font-body">
+              Type your username <span className="font-bold text-foreground">"{saveSlots.find(s => s.id === deleteModal)?.username}"</span> to confirm deletion.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="Type username to confirm..."
+            value={deleteInput}
+            onChange={(e) => setDeleteInput(e.target.value)}
+            className="font-body"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteModal(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteSubmit}
+              disabled={deleteInput !== saveSlots.find(s => s.id === deleteModal)?.username}
+            >
+              Delete Forever
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
