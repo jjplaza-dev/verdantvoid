@@ -1,20 +1,28 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Save, Trash2, Play, Coins } from "lucide-react";
 import { useGameStore, DIFFICULTIES } from "@/stores/gameStore";
+import { useAuthStore } from "@/stores/authStore";
 
 const SaveSlots = () => {
   const navigate = useNavigate();
-  const { saveSlots, setActiveSlot, loadSlot, createSaveSlot, deleteSaveSlot } = useGameStore();
+  const { saveSlots, setActiveSlot, loadSlot, createSaveSlot, deleteSaveSlot, loadSaveSlotsFromDb, saveSlotsLoaded } = useGameStore();
+  const { user } = useAuthStore();
   
   const [createModal, setCreateModal] = useState<number | null>(null);
   const [deleteModal, setDeleteModal] = useState<number | null>(null);
   const [usernameInput, setUsernameInput] = useState("");
   const [deleteInput, setDeleteInput] = useState("");
+
+  useEffect(() => {
+    if (user && !saveSlotsLoaded) {
+      loadSaveSlotsFromDb(user.id);
+    }
+  }, [user, saveSlotsLoaded, loadSaveSlotsFromDb]);
 
   const handleSlotClick = (slotId: number) => {
     const slot = saveSlots.find(s => s.id === slotId);
@@ -117,9 +125,8 @@ const SaveSlots = () => {
               {!slot.isEmpty && (
                 <CardContent>
                   <div className="flex gap-4 text-sm font-body text-muted-foreground">
-                    {slot.inTreeInstance && <span>Tree: {(slot.currentTreeIndex ?? 0) + 1}</span>}
-                    {slot.currentHealth !== null && <span>HP: {slot.currentHealth}/{slot.maxHealth}</span>}
-                    {slot.completedNodes.length > 0 && <span>Nodes: {slot.completedNodes.length}</span>}
+                    {slot.inTreeInstance && <span>Delving - Tree {(slot.currentTreeIndex ?? 0) + 1}</span>}
+                    {slot.completedTrees.length > 0 && <span>Trees cleared: {slot.completedTrees.length}</span>}
                   </div>
                 </CardContent>
               )}

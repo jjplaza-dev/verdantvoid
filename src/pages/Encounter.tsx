@@ -1,8 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useGameStore, Card as CardType } from "@/stores/gameStore";
-import { Heart, Shield, Zap, Swords, ArrowRight, Layers, Archive } from "lucide-react";
+import { Heart, Shield, Zap, Swords, ArrowRight, Layers, Archive, Flag } from "lucide-react";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { gsap } from "gsap";
 
@@ -24,17 +24,19 @@ const Encounter = () => {
     playCard,
     endTurn,
     completeEncounter,
+    surrenderEncounter,
+    completedNodes,
     inEncounter,
   } = useGameStore();
 
   const [draggedCard, setDraggedCard] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [dragPos, setDragPos] = useState({ x: 0, y: 0 });
-  const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
   const [showDeckPopup, setShowDeckPopup] = useState(false);
   const [showDiscardPopup, setShowDiscardPopup] = useState(false);
-  const [battleLog, setBattleLog] = useState<string[]>([]);
-  const handRef = useRef<HTMLDivElement>(null);
+  const [showSurrenderDialog, setShowSurrenderDialog] = useState(false);
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const cardPositions = useRef<Record<string, { x: number; y: number }>>({});
   const enemyRef = useRef<HTMLDivElement>(null);
   const prevHandRef = useRef<string[]>([]);
 
@@ -66,14 +68,12 @@ const Encounter = () => {
   // Victory/defeat checks
   useEffect(() => {
     if (enemy && enemy.currentHealth <= 0) {
-      setBattleLog(prev => [...prev, `${enemy.name} defeated!`]);
       setTimeout(() => {
         completeEncounter(true);
       }, 1200);
     }
     
     if (character && character.currentHealth <= 0) {
-      setBattleLog(prev => [...prev, "You have been defeated!"]);
       setTimeout(() => {
         completeEncounter(false);
         navigate("/summoner-menu");
@@ -81,55 +81,87 @@ const Encounter = () => {
     }
   }, [enemy?.currentHealth, character?.currentHealth]);
 
-  // Drag handlers
-  const handleMouseDown = useCallback((e: React.MouseEvent, card: CardType) => {
+  // Store card positions for snap-back
+  useEffect(() => {
+    hand.forEach(card => {
+      const el = cardRefs.current[card.id];
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        cardPositions.current[card.id] = { x: rect.left, y: rect.top };
+      }
+    });
+  }, [hand, draggedCard]);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent, card: CardType) => {
     if (card.cost > currentEnergy) return;
     e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const el = cardRefs.current[card.id];
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      cardPositions.current[card.id] = { x: rect.left, y: rect.top };
+      setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    }
     setDraggedCard(card.id);
-    setDragStartPos({ x: e.clientX, y: e.clientY });
     setDragPos({ x: e.clientX, y: e.clientY });
   }, [currentEnergy]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!draggedCard) return;
     setDragPos({ x: e.clientX, y: e.clientY });
   }, [draggedCard]);
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback(() => {
     if (!draggedCard) return;
     
     const card = hand.find(c => c.id === draggedCard);
     if (!card) { setDraggedCard(null); return; }
 
-    // Check if dropped on enemy
     const enemyEl = enemyRef.current;
+    let played = false;
+
     if (enemyEl) {
       const rect = enemyEl.getBoundingClientRect();
-      if (dragPos.x >= rect.left && dragPos.x <= rect.right && dragPos.y >= rect.top && dragPos.y <= rect.bottom) {
-        if (card.type === "attack") {
-          playCard(draggedCard, true);
-          setBattleLog(prev => [...prev, `${card.name} dealt damage!`]);
-        } else {
-          playCard(draggedCard, false);
-          setBattleLog(prev => [...prev, `Played ${card.name}`]);
-        }
-      } else if (card.type !== "attack") {
-        // Non-attack cards can be dropped anywhere
+      const overEnemy = dragPos.x >= rect.left && dragPos.x <= rect.right && dragPos.y >= rect.top && dragPos.y <= rect.bottom;
+      
+      if (overEnemy && card.type === "attack") {
+        playCard(draggedCard, true);
+        played = true;
+      } else if (overEnemy && card.type !== "attack") {
         playCard(draggedCard, false);
-        setBattleLog(prev => [...prev, `Played ${card.name}`]);
+        played = true;
       }
     }
-    
-    // Reset drag - card returns to hand via state
+
+    // If not played and it's a non-attack card dropped anywhere valid
+    if (!played && card.type !== "attack") {
+      // Only play if dropped far from hand area (above hand)
+      const handY = window.innerHeight - 200;
+      if (dragPos.y < handY) {
+        playCard(draggedCard, false);
+        played = true;
+      }
+    }
+
+    // Snap back animation if not played
+    if (!played) {
+      const el = cardRefs.current[draggedCard];
+      if (el) {
+        gsap.to(el, { x: 0, y: 0, duration: 0.3, ease: "power2.out" });
+      }
+    }
+
     setDraggedCard(null);
-    setDragStartPos(null);
   }, [draggedCard, dragPos, hand, playCard]);
 
   const handleEndTurn = () => {
-    if (enemy) {
-      setBattleLog(prev => [...prev, `${enemy.name} ${enemy.intent === "attack" ? `attacks for ${enemy.intentValue}` : `gains ${enemy.intentValue} shield`}`]);
-    }
     endTurn();
+  };
+
+  const handleSurrender = () => {
+    surrenderEncounter();
+    setShowSurrenderDialog(false);
+    navigate("/summoner-menu");
   };
 
   if (!character || !enemy) {
@@ -140,14 +172,24 @@ const Encounter = () => {
 
   return (
     <div 
-      className="min-h-screen bg-background flex flex-col select-none"
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
+      className="min-h-screen bg-background flex flex-col select-none touch-none"
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
     >
+      {/* Surrender button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="absolute right-4 top-4 font-title text-xs z-10"
+        onClick={() => setShowSurrenderDialog(true)}
+      >
+        <Flag className="mr-1 h-3 w-3" />
+        Surrender
+      </Button>
+
       {/* Top bar - Enemy area */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div ref={enemyRef} className="relative">
-          {/* Enemy placeholder */}
           <div className={`
             w-32 h-40 rounded-lg flex flex-col items-center justify-center
             ${enemy.type === "basic" ? "bg-blue-600" : enemy.type === "elite" ? "bg-orange-600" : "bg-red-700"}
@@ -158,7 +200,6 @@ const Encounter = () => {
             <span className="text-xs text-white/70 capitalize">{enemy.type}</span>
           </div>
           
-          {/* Enemy stats */}
           <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 flex gap-4">
             <div className="flex items-center gap-1 bg-card px-2 py-1 rounded">
               <Heart className="h-4 w-4 text-health" />
@@ -172,7 +213,6 @@ const Encounter = () => {
             )}
           </div>
           
-          {/* Enemy intent */}
           <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-card px-3 py-1 rounded fantasy-border">
             <div className="flex items-center gap-2">
               {enemy.intent === "attack" ? (
@@ -193,7 +233,6 @@ const Encounter = () => {
 
       {/* Middle - Character and game info */}
       <div className="flex items-center justify-between px-8 py-4 bg-card/50">
-        {/* Character placeholder */}
         <div className="flex items-center gap-4">
           <div className="w-20 h-28 rounded-lg bg-primary flex items-center justify-center fantasy-border">
             <span className="font-title text-primary-foreground text-xs">YOU</span>
@@ -218,7 +257,6 @@ const Encounter = () => {
           </div>
         </div>
 
-        {/* Energy */}
         <div className="flex flex-col items-center gap-2">
           <div className="flex items-center gap-2 bg-card px-4 py-2 rounded-lg fantasy-border">
             <Zap className="h-6 w-6 text-energy" />
@@ -226,7 +264,6 @@ const Encounter = () => {
           </div>
         </div>
 
-        {/* End turn button */}
         <Button 
           onClick={handleEndTurn} 
           size="lg" 
@@ -241,7 +278,6 @@ const Encounter = () => {
       {/* Bottom - Hand with Deck/Discard */}
       <div className="p-4 bg-card/30">
         <div className="flex items-end gap-4">
-          {/* Deck pile */}
           <button
             className="flex flex-col items-center gap-1 min-w-[60px] cursor-pointer hover:scale-105 transition-transform"
             onClick={() => setShowDeckPopup(true)}
@@ -252,8 +288,7 @@ const Encounter = () => {
             <span className="text-xs font-title text-muted-foreground">{deck.length}</span>
           </button>
 
-          {/* Hand cards */}
-          <div ref={handRef} className="flex-1 flex justify-center gap-2 flex-wrap">
+          <div className="flex-1 flex justify-center gap-2 flex-wrap">
             {hand.map((card) => {
               const canPlay = card.cost <= currentEnergy;
               const isDragging = draggedCard === card.id;
@@ -262,24 +297,24 @@ const Encounter = () => {
                 <div
                   key={card.id}
                   ref={el => { cardRefs.current[card.id] = el; }}
-                  onMouseDown={(e) => handleMouseDown(e, card)}
+                  onPointerDown={(e) => handlePointerDown(e, card)}
                   style={isDragging ? {
                     position: "fixed",
-                    left: dragPos.x - 56,
-                    top: dragPos.y - 80,
+                    left: dragPos.x - dragOffset.x,
+                    top: dragPos.y - dragOffset.y,
                     zIndex: 1000,
                     pointerEvents: "none",
+                    touchAction: "none",
                   } : undefined}
                   className={`
-                    w-28 h-40 rounded-lg border-2 p-2 flex flex-col
-                    transition-all duration-200
+                    w-28 h-40 rounded-lg border-2 p-2 flex flex-col relative
                     ${cardTypeColors[card.type]}
                     ${canPlay ? "cursor-grab hover:scale-105 hover:-translate-y-2" : "opacity-50 cursor-not-allowed"}
-                    ${isDragging ? "scale-110 shadow-2xl rotate-3" : ""}
+                    ${isDragging ? "scale-110 shadow-2xl rotate-3" : "transition-all duration-200"}
                   `}
                 >
-                  {/* Cost */}
-                  <div className="flex items-center gap-1 self-start">
+                  {/* Cost - upper right */}
+                  <div className="flex items-center gap-1 absolute top-2 right-2">
                     <Zap className="h-3 w-3 text-energy" />
                     <span className="text-xs font-bold text-energy">{card.cost}</span>
                   </div>
@@ -287,14 +322,11 @@ const Encounter = () => {
                   <div className="flex-1 flex items-center justify-center">
                     <span className="font-title text-sm text-center">{card.name}</span>
                   </div>
-                  {/* Description */}
-                  <p className="text-xs text-muted-foreground text-center">{card.description}</p>
                 </div>
               );
             })}
           </div>
 
-          {/* Discard pile */}
           <button
             className="flex flex-col items-center gap-1 min-w-[60px] cursor-pointer hover:scale-105 transition-transform"
             onClick={() => setShowDiscardPopup(true)}
@@ -305,12 +337,6 @@ const Encounter = () => {
             <span className="text-xs font-title text-muted-foreground">{discardPile.length}</span>
           </button>
         </div>
-        
-        {draggedCard && hand.find(c => c.id === draggedCard)?.type === "attack" && (
-          <p className="text-center mt-2 text-sm text-muted-foreground animate-pulse">
-            Drag to the enemy to attack
-          </p>
-        )}
       </div>
 
       {/* Deck Popup */}
@@ -346,6 +372,23 @@ const Encounter = () => {
             ))}
             {discardPile.length === 0 && <p className="col-span-3 text-center text-muted-foreground text-sm">Empty</p>}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Surrender Dialog */}
+      <Dialog open={showSurrenderDialog} onOpenChange={setShowSurrenderDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-title">Surrender?</DialogTitle>
+            <DialogDescription className="font-body">
+              Your run will end. You will receive <span className="text-gold font-bold">{Math.min(40, completedNodes.length * 4)}</span> credits based on progress ({completedNodes.length} nodes cleared).
+              All progress in this tree instance will be lost.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSurrenderDialog(false)}>Continue Fighting</Button>
+            <Button variant="destructive" onClick={handleSurrender}>Surrender</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

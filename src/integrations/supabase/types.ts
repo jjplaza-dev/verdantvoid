@@ -14,7 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      summoner_saves: {
+        Row: {
+          character_id: string | null
+          completed_nodes: string[]
+          completed_tree_nodes: number
+          completed_trees: number[]
+          created_at: string
+          credits: number
+          current_health: number | null
+          current_node_id: string | null
+          current_tree_index: number | null
+          difficulty: string
+          id: string
+          in_tree_instance: boolean
+          max_health: number | null
+          slot_number: number
+          stat_upgrades: Json
+          tree_nodes: Json | null
+          updated_at: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          character_id?: string | null
+          completed_nodes?: string[]
+          completed_tree_nodes?: number
+          completed_trees?: number[]
+          created_at?: string
+          credits?: number
+          current_health?: number | null
+          current_node_id?: string | null
+          current_tree_index?: number | null
+          difficulty: string
+          id?: string
+          in_tree_instance?: boolean
+          max_health?: number | null
+          slot_number: number
+          stat_upgrades?: Json
+          tree_nodes?: Json | null
+          updated_at?: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          character_id?: string | null
+          completed_nodes?: string[]
+          completed_tree_nodes?: number
+          completed_trees?: number[]
+          created_at?: string
+          credits?: number
+          current_health?: number | null
+          current_node_id?: string | null
+          current_tree_index?: number | null
+          difficulty?: string
+          id?: string
+          in_tree_instance?: boolean
+          max_health?: number | null
+          slot_number?: number
+          stat_upgrades?: Json
+          tree_nodes?: Json | null
+          updated_at?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
