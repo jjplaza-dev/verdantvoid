@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, TreePine, Lock } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, TreePine, Lock } from "lucide-react";
 import { useGameStore } from "@/stores/gameStore";
 
 const TREES = [
@@ -14,55 +14,87 @@ const TREES = [
 
 const TreeSelect = () => {
   const navigate = useNavigate();
-  const { setCurrentTree } = useGameStore();
+  const { setCurrentTree, saveSlots, activeSlot } = useGameStore();
+  const [focusIndex, setFocusIndex] = useState(0);
 
-  const unlockedTrees = 5;
+  const slot = saveSlots.find(s => s.id === activeSlot);
+  const completedTrees = slot?.completedTrees ?? [];
 
-  const handleSelectTree = (treeIndex: number) => {
-    if (treeIndex >= unlockedTrees) return;
-    setCurrentTree(treeIndex);
+  const isUnlocked = (treeId: number) => {
+    if (treeId === 0) return true;
+    return completedTrees.includes(treeId - 1);
+  };
+
+  const tree = TREES[focusIndex];
+  const locked = !isUnlocked(tree.id);
+
+  const handleSelect = () => {
+    if (locked) return;
+    setCurrentTree(tree.id);
     navigate("/character-select");
   };
 
   return (
-    <div className="min-h-screen bg-background px-4 py-8">
+    <div className="min-h-screen bg-background px-4 py-8 flex flex-col items-center justify-center">
       <Button variant="ghost" className="absolute left-4 top-4 font-title" onClick={() => navigate("/summoner-menu")}>
         <ArrowLeft className="mr-2 h-4 w-4" />
         Back
       </Button>
 
-      <div className="mx-auto max-w-4xl">
-        <div className="mb-8 text-center">
-          <h1 className="mb-2 font-title text-4xl font-bold glow-gold">Choose Your Path</h1>
-          <p className="font-body text-muted-foreground">Each tree presents greater challenges and rewards</p>
+      <h1 className="mb-2 font-title text-3xl font-bold glow-gold">Choose Your Path</h1>
+      <p className="mb-8 font-body text-muted-foreground">Each tree presents greater challenges and rewards</p>
+
+      <div className="flex items-center gap-6">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-12 w-12"
+          disabled={focusIndex === 0}
+          onClick={() => setFocusIndex(i => Math.max(0, i - 1))}
+        >
+          <ChevronLeft className="h-8 w-8" />
+        </Button>
+
+        <div className="w-72 text-center fantasy-border rounded-xl p-8 bg-card transition-all duration-300">
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+            {locked ? <Lock className="h-10 w-10 text-muted-foreground" /> : <TreePine className="h-10 w-10 text-primary" />}
+          </div>
+          <h2 className="font-title text-xl mb-1">Tree {tree.id + 1}</h2>
+          <h3 className="font-title text-lg mb-2 text-primary">{tree.name}</h3>
+          <p className="font-body text-sm text-muted-foreground mb-2">{tree.description}</p>
+          <p className={`text-sm font-body ${tree.id === 0 ? "text-muted-foreground" : "text-orange-400"}`}>{tree.modifier}</p>
+          {completedTrees.includes(tree.id) && (
+            <p className="mt-2 text-sm font-title text-green-400">✓ Completed</p>
+          )}
+          {!locked && (
+            <Button className="mt-6 w-full font-title" onClick={handleSelect}>
+              Enter
+            </Button>
+          )}
+          {locked && (
+            <p className="mt-6 text-sm text-muted-foreground font-body">Complete Tree {tree.id} first</p>
+          )}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {TREES.map((tree) => {
-            const isLocked = tree.id >= unlockedTrees;
-            return (
-              <Card
-                key={tree.id}
-                className={`group fantasy-border transition-all duration-300 ${
-                  isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:card-glow hover:scale-[1.02]"
-                }`}
-                onClick={() => !isLocked && handleSelectTree(tree.id)}
-              >
-                <CardHeader className="text-center">
-                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                    {isLocked ? <Lock className="h-8 w-8 text-muted-foreground" /> : <TreePine className="h-8 w-8 text-primary" />}
-                  </div>
-                  <CardTitle className="font-title text-lg">Tree {tree.id + 1}: {tree.name}</CardTitle>
-                  <CardDescription className="font-body">{tree.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="text-center">
-                  <p className={`text-sm font-body ${tree.id === 0 ? "text-muted-foreground" : "text-orange-400"}`}>{tree.modifier}</p>
-                  {!isLocked && <Button className="mt-4 w-full font-title">Enter</Button>}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-12 w-12"
+          disabled={focusIndex === TREES.length - 1}
+          onClick={() => setFocusIndex(i => Math.min(TREES.length - 1, i + 1))}
+        >
+          <ChevronRight className="h-8 w-8" />
+        </Button>
+      </div>
+
+      {/* Progress dots */}
+      <div className="mt-6 flex gap-2">
+        {TREES.map((_, i) => (
+          <div
+            key={i}
+            className={`h-2 w-2 rounded-full transition-all ${i === focusIndex ? "bg-primary scale-150" : "bg-muted-foreground/30"}`}
+          />
+        ))}
       </div>
     </div>
   );

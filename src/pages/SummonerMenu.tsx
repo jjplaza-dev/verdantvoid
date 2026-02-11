@@ -8,26 +8,28 @@ import { useGameStore, CHARACTERS, type StatUpgrades } from "@/stores/gameStore"
 
 const iconMap: Record<string, any> = { Sword, Shield, Zap };
 
-const statLabels: Record<keyof StatUpgrades, { label: string; icon: any; suffix: string }> = {
-  health: { label: "Health", icon: Heart, suffix: "" },
-  energy: { label: "Energy", icon: Zap, suffix: "" },
-  offense: { label: "Offense", icon: Swords, suffix: "" },
-  defense: { label: "Defense", icon: Shield, suffix: "" },
-  cardDraw: { label: "Card Draw", icon: ChevronUp, suffix: "" },
-  armor: { label: "Armor", icon: Shield, suffix: "%" },
-};
+const upgradableStats: { key: keyof StatUpgrades; label: string; icon: any }[] = [
+  { key: "health", label: "Health", icon: Heart },
+  { key: "offense", label: "Offense", icon: Swords },
+  { key: "defense", label: "Defense", icon: Shield },
+];
 
 const SummonerMenu = () => {
   const navigate = useNavigate();
-  const { saveSlots, activeSlot, getEffectiveStats, getUpgradeCost, upgradeStat, getCharacterDeck } = useGameStore();
+  const { saveSlots, activeSlot, getEffectiveStats, getUpgradeCost, upgradeStat, getCharacterDeck, setCurrentTree, initializeTree, treeNodes } = useGameStore();
   const [selectedChampion, setSelectedChampion] = useState<string | null>(null);
   const [showDeck, setShowDeck] = useState(false);
 
   const slot = saveSlots.find(s => s.id === activeSlot);
   if (!slot) return null;
 
-  const handleUpgrade = (charId: string, stat: keyof StatUpgrades) => {
-    upgradeStat(charId, stat);
+  const handleDelve = () => {
+    // If already in a tree instance, go directly
+    if (slot.inTreeInstance) {
+      navigate("/tree-instance");
+    } else {
+      navigate("/tree-select");
+    }
   };
 
   const selectedChar = CHARACTERS.find(c => c.id === selectedChampion);
@@ -51,19 +53,17 @@ const SummonerMenu = () => {
           </div>
         </div>
 
-        {/* Delve Button */}
         <div className="mb-8 text-center">
           <Button
             size="lg"
             className="h-14 px-10 text-lg font-title tracking-wide fantasy-border hover:card-glow transition-shadow duration-300"
-            onClick={() => navigate("/tree-select")}
+            onClick={handleDelve}
           >
             <TreePine className="mr-2 h-5 w-5" />
-            Delve into the Forest
+            {slot.inTreeInstance ? "Return to Tree" : "Delve into the Forest"}
           </Button>
         </div>
 
-        {/* Champions Grid */}
         <h2 className="mb-4 font-title text-xl text-center text-muted-foreground">Champions</h2>
         <div className="grid gap-4 md:grid-cols-3">
           {CHARACTERS.map((char) => {
@@ -97,6 +97,25 @@ const SummonerMenu = () => {
               <DialogHeader>
                 <DialogTitle className="font-title text-xl text-center">{selectedChar.name}</DialogTitle>
               </DialogHeader>
+
+              {/* Static stats on top */}
+              <div className="flex justify-center gap-4 mb-2">
+                <div className="flex items-center gap-1 bg-muted/50 px-3 py-1 rounded">
+                  <Zap className="h-4 w-4 text-energy" />
+                  <span className="font-title text-sm">{selectedStats.energy} Energy</span>
+                </div>
+                <div className="flex items-center gap-1 bg-muted/50 px-3 py-1 rounded">
+                  <ChevronUp className="h-4 w-4 text-primary" />
+                  <span className="font-title text-sm">{selectedStats.cardDraw} Draw</span>
+                </div>
+                <div className="flex items-center gap-1 bg-muted/50 px-3 py-1 rounded">
+                  <Shield className="h-4 w-4 text-armor" />
+                  <span className="font-title text-sm">{selectedStats.armor}% Armor</span>
+                </div>
+              </div>
+
+              {/* Description */}
+              <p className="text-sm text-muted-foreground font-body text-center mb-4">{selectedChar.description}</p>
               
               <div className="flex justify-center gap-2 mb-4">
                 <Button
@@ -117,20 +136,19 @@ const SummonerMenu = () => {
 
               {!showDeck ? (
                 <div className="space-y-3">
-                  {(Object.keys(statLabels) as (keyof StatUpgrades)[]).map((stat) => {
-                    const { label, icon: StatIcon, suffix } = statLabels[stat];
-                    const cost = getUpgradeCost(selectedChampion!, stat);
-                    const value = selectedStats[stat as keyof typeof selectedStats];
+                  {upgradableStats.map(({ key, label, icon: StatIcon }) => {
+                    const cost = getUpgradeCost(selectedChampion!, key);
+                    const value = selectedStats[key as keyof typeof selectedStats];
                     const canAfford = slot.credits >= cost;
 
                     return (
-                      <div key={stat} className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2">
+                      <div key={key} className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2">
                         <div className="flex items-center gap-2">
                           <StatIcon className="h-4 w-4 text-primary" />
                           <span className="font-body text-sm">{label}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-title text-lg">{value}{suffix}</span>
+                          <span className="font-title text-lg">{value}</span>
                           <Button
                             size="sm"
                             variant="outline"
@@ -138,7 +156,7 @@ const SummonerMenu = () => {
                             disabled={!canAfford}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleUpgrade(selectedChampion!, stat);
+                              upgradeStat(selectedChampion!, key);
                             }}
                           >
                             <ChevronUp className="h-3 w-3 mr-1" />
@@ -163,7 +181,6 @@ const SummonerMenu = () => {
                     >
                       <div className="font-title text-xs">{card.name}</div>
                       <div className="text-muted-foreground mt-1">Cost: {card.cost}</div>
-                      <div className="text-muted-foreground">{card.description}</div>
                     </div>
                   ))}
                 </div>

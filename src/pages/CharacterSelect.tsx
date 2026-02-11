@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Shield, Sword, Zap } from "lucide-react";
+import { ArrowLeft, Shield, Sword, Zap, Heart } from "lucide-react";
 import { useGameStore, CHARACTERS } from "@/stores/gameStore";
 
 const iconMap: Record<string, any> = { Sword, Shield, Zap };
@@ -50,11 +50,11 @@ const CharacterSelect = () => {
                 <CardContent>
                   <div className="space-y-2 text-sm font-body">
                     <div className="flex justify-between"><span className="text-muted-foreground">Health</span><span className="text-health font-semibold">{stats.health}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Energy</span><span className="text-energy font-semibold">{stats.energy}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Offense</span><span className="text-gold font-semibold">{stats.offense}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Defense</span><span className="font-semibold">{stats.defense}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Card Draw</span><span className="font-semibold">{stats.cardDraw}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Armor</span><span className="font-semibold">{stats.armor}%</span></div>
+                    <div className="flex justify-between text-muted-foreground/70"><span>Energy</span><span>{stats.energy}</span></div>
+                    <div className="flex justify-between text-muted-foreground/70"><span>Card Draw</span><span>{stats.cardDraw}</span></div>
+                    <div className="flex justify-between text-muted-foreground/70"><span>Armor</span><span>{stats.armor}%</span></div>
                   </div>
                   <Button className="mt-6 w-full font-title">Select</Button>
                 </CardContent>

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { supabase } from "@/integrations/supabase/client";
 
 export type Difficulty = "beginner" | "easy" | "hard" | "nightmare";
 export type NodeType = "basic" | "elite" | "boss";
@@ -65,7 +66,7 @@ export interface TreeNode {
   type: NodeType;
   row: number;
   col: number;
-  connections: string[];
+  connections: string[]; // IDs of nodes in the PREVIOUS row that lead to this node
   completed: boolean;
   available: boolean;
 }
@@ -77,6 +78,7 @@ export interface Enemy {
   maxHealth: number;
   currentHealth: number;
   shield: number;
+  shieldTurnsLeft: number;
   baseDamageMin: number;
   baseDamageMax: number;
   intent: "attack" | "shield";
@@ -108,15 +110,13 @@ export interface Character {
 
 export interface StatUpgrades {
   health: number;
-  energy: number;
   offense: number;
   defense: number;
-  cardDraw: number;
-  armor: number;
 }
 
 export interface SaveSlotData {
   id: number;
+  dbId: string | null; // database row id
   isEmpty: boolean;
   username: string | null;
   difficulty: Difficulty | null;
@@ -128,12 +128,13 @@ export interface SaveSlotData {
   maxHealth: number | null;
   completedNodes: string[];
   inTreeInstance: boolean;
+  treeNodes: TreeNode[] | null;
   statUpgrades: Record<string, StatUpgrades>;
-  completedTreeNodes: number; // tracks how many nodes completed for credit calc
+  completedTreeNodes: number;
+  completedTrees: number[];
 }
 
 export interface GameState {
-  // Current session
   activeSlot: number | null;
   difficulty: Difficulty | null;
   currentTreeIndex: number | null;
@@ -143,17 +144,15 @@ export interface GameState {
   completedNodes: string[];
   inEncounter: boolean;
   
-  // Combat state
   enemy: Enemy | null;
   hand: Card[];
   deck: Card[];
   discardPile: Card[];
   currentEnergy: number;
   
-  // Save slots
   saveSlots: SaveSlotData[];
+  saveSlotsLoaded: boolean;
   
-  // Actions
   setActiveSlot: (slot: number) => void;
   setDifficulty: (difficulty: Difficulty) => void;
   setCurrentTree: (treeIndex: number) => void;
@@ -177,6 +176,11 @@ export interface GameState {
   getCharacterDeck: (characterId: string) => Card[];
   getEffectiveStats: (characterId: string) => CharacterDefinition['baseStats'];
   awardCredits: (bossDefeated: boolean, nodesCompleted: number) => void;
+  loadSaveSlotsFromDb: (userId: string) => Promise<void>;
+  persistSlotToDb: (slotId: number) => Promise<void>;
+  deleteSlotFromDb: (slotId: number) => Promise<void>;
+  emergeFromForest: () => void;
+  surrenderEncounter: () => void;
 }
 
 const ENEMY_TEMPLATES = {
@@ -197,16 +201,13 @@ const ENEMY_TEMPLATES = {
   ],
 };
 
-const buildStarterDeck = (): Card[] => [
-  // 6 strikes
+const buildStarterDeck = (offense: number, defense: number): Card[] => [
   ...Array.from({ length: 6 }, (_, i) => ({
-    id: `strike${i + 1}`, name: "Strike", type: "attack" as const, cost: 1, value: 6, description: "Deal 6 damage",
+    id: `strike${i + 1}`, name: "Strike", type: "attack" as const, cost: 1, value: offense, description: "Strike",
   })),
-  // 6 defends
   ...Array.from({ length: 6 }, (_, i) => ({
-    id: `defend${i + 1}`, name: "Defend", type: "skill" as const, cost: 1, value: 5, description: "Gain 5 shield",
+    id: `defend${i + 1}`, name: "Defend", type: "skill" as const, cost: 1, value: defense, description: "Defend",
   })),
-  // 3 preparations (2 energy cost)
   ...Array.from({ length: 3 }, (_, i) => ({
     id: `prep${i + 1}`, name: "Preparation", type: "power" as const, cost: 2, value: 50, description: "+50% attack for 2 turns",
   })),
@@ -214,10 +215,12 @@ const buildStarterDeck = (): Card[] => [
 
 const generateTree = (): TreeNode[] => {
   const nodes: TreeNode[] = [];
-  const totalRows = 10; // 10 rows including boss
+  const totalRows = 10;
+  const totalCols = 7; // 4 main + 3 intersection
 
-  // Row 0 (bottom) = 4 basic nodes, always available
-  for (let col = 0; col < 4; col++) {
+  // Row 0 (bottom) = 4 basic nodes at main columns (0, 2, 4, 6)
+  const mainCols = [0, 2, 4, 6];
+  for (const col of mainCols) {
     nodes.push({
       id: `node-0-${col}`,
       type: "basic",
@@ -229,33 +232,38 @@ const generateTree = (): TreeNode[] => {
     });
   }
 
-  // Rows 1-8: random basic/elite nodes, 3-4 cols per row, with crisscross connections
+  // Rows 1-8: generate nodes with connections
   for (let row = 1; row < totalRows - 1; row++) {
-    const colCount = Math.random() < 0.5 ? 3 : 4;
-    
-    for (let col = 0; col < colCount; col++) {
-      // 15% chance elite (rows 4+), rest basic
+    // Decide which columns have nodes this row
+    // Always use main columns, randomly add intersection columns
+    const rowCols: number[] = [...mainCols];
+    // Randomly add intersection columns (1, 3, 5) with 40% chance each
+    for (const ic of [1, 3, 5]) {
+      if (Math.random() < 0.4) rowCols.push(ic);
+    }
+    rowCols.sort((a, b) => a - b);
+
+    const prevRowNodes = nodes.filter(n => n.row === row - 1);
+
+    for (const col of rowCols) {
       const isElite = row >= 4 && Math.random() < 0.15;
       
-      // Build connections to previous row nodes
-      const prevRowNodes = nodes.filter(n => n.row === row - 1);
+      // Connect to previous row nodes that are nearby (within 1 col distance)
       const connections: string[] = [];
-      
-      // Each node connects to 1-2 nodes in the row above it
-      // Map col proportionally to previous row
-      const prevColCount = prevRowNodes.length;
-      const mappedCol = (col / (colCount - 1 || 1)) * (prevColCount - 1);
-      const primaryIdx = Math.round(mappedCol);
-      
-      if (prevRowNodes[primaryIdx]) {
-        connections.push(prevRowNodes[primaryIdx].id);
+      for (const prev of prevRowNodes) {
+        const dist = Math.abs(prev.col - col);
+        if (dist <= 1) {
+          connections.push(prev.id);
+        } else if (dist === 2 && Math.random() < 0.3) {
+          connections.push(prev.id);
+        }
       }
-      // Add adjacent connections for crisscross
-      if (primaryIdx > 0 && Math.random() < 0.4) {
-        connections.push(prevRowNodes[primaryIdx - 1].id);
-      }
-      if (primaryIdx < prevColCount - 1 && Math.random() < 0.4) {
-        connections.push(prevRowNodes[primaryIdx + 1].id);
+      // Ensure at least one connection
+      if (connections.length === 0 && prevRowNodes.length > 0) {
+        const closest = prevRowNodes.reduce((a, b) => 
+          Math.abs(a.col - col) < Math.abs(b.col - col) ? a : b
+        );
+        connections.push(closest.id);
       }
 
       nodes.push({
@@ -270,13 +278,13 @@ const generateTree = (): TreeNode[] => {
     }
   }
 
-  // Boss row (row 9) = 1 boss node connecting to all row 8 nodes
+  // Boss row (row 9) = 1 boss node at center
   const row8Nodes = nodes.filter(n => n.row === totalRows - 2);
   nodes.push({
-    id: `node-${totalRows - 1}-0`,
+    id: `node-${totalRows - 1}-3`,
     type: "boss",
     row: totalRows - 1,
-    col: 0,
+    col: 3,
     connections: row8Nodes.map(n => n.id),
     completed: false,
     available: false,
@@ -303,7 +311,8 @@ const spawnEnemy = (type: EnemyType, difficulty: Difficulty, treeIndex: number):
   const totalMod = diffMod * treeMod;
   
   const maxHealth = Math.round(template.baseHealth * totalMod);
-  const intent = Math.random() > 0.5 ? "attack" : "shield";
+  // 70% attack, 30% shield
+  const intent: "attack" | "shield" = Math.random() < 0.7 ? "attack" : "shield";
   const intentValue = intent === "attack" 
     ? Math.round((template.baseDamageMin + Math.random() * (template.baseDamageMax - template.baseDamageMin)) * totalMod)
     : Math.round(10 * totalMod);
@@ -315,6 +324,7 @@ const spawnEnemy = (type: EnemyType, difficulty: Difficulty, treeIndex: number):
     maxHealth,
     currentHealth: maxHealth,
     shield: 0,
+    shieldTurnsLeft: 0,
     baseDamageMin: Math.round(template.baseDamageMin * totalMod),
     baseDamageMax: Math.round(template.baseDamageMax * totalMod),
     intent,
@@ -323,13 +333,13 @@ const spawnEnemy = (type: EnemyType, difficulty: Difficulty, treeIndex: number):
 };
 
 const emptyUpgrades = (): StatUpgrades => ({
-  health: 0, energy: 0, offense: 0, defense: 0, cardDraw: 0, armor: 0,
+  health: 0, offense: 0, defense: 0,
 });
 
 const initialSaveSlots: SaveSlotData[] = [
-  { id: 1, isEmpty: true, username: null, difficulty: null, credits: 0, characterId: null, currentTreeIndex: null, currentNodeId: null, currentHealth: null, maxHealth: null, completedNodes: [], inTreeInstance: false, statUpgrades: {}, completedTreeNodes: 0 },
-  { id: 2, isEmpty: true, username: null, difficulty: null, credits: 0, characterId: null, currentTreeIndex: null, currentNodeId: null, currentHealth: null, maxHealth: null, completedNodes: [], inTreeInstance: false, statUpgrades: {}, completedTreeNodes: 0 },
-  { id: 3, isEmpty: true, username: null, difficulty: null, credits: 0, characterId: null, currentTreeIndex: null, currentNodeId: null, currentHealth: null, maxHealth: null, completedNodes: [], inTreeInstance: false, statUpgrades: {}, completedTreeNodes: 0 },
+  { id: 1, dbId: null, isEmpty: true, username: null, difficulty: null, credits: 0, characterId: null, currentTreeIndex: null, currentNodeId: null, currentHealth: null, maxHealth: null, completedNodes: [], inTreeInstance: false, treeNodes: null, statUpgrades: {}, completedTreeNodes: 0, completedTrees: [] },
+  { id: 2, dbId: null, isEmpty: true, username: null, difficulty: null, credits: 0, characterId: null, currentTreeIndex: null, currentNodeId: null, currentHealth: null, maxHealth: null, completedNodes: [], inTreeInstance: false, treeNodes: null, statUpgrades: {}, completedTreeNodes: 0, completedTrees: [] },
+  { id: 3, dbId: null, isEmpty: true, username: null, difficulty: null, credits: 0, characterId: null, currentTreeIndex: null, currentNodeId: null, currentHealth: null, maxHealth: null, completedNodes: [], inTreeInstance: false, treeNodes: null, statUpgrades: {}, completedTreeNodes: 0, completedTrees: [] },
 ];
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -347,6 +357,90 @@ export const useGameStore = create<GameState>((set, get) => ({
   discardPile: [],
   currentEnergy: 0,
   saveSlots: initialSaveSlots,
+  saveSlotsLoaded: false,
+
+  loadSaveSlotsFromDb: async (userId: string) => {
+    const { data, error } = await supabase
+      .from("summoner_saves")
+      .select("*")
+      .eq("user_id", userId);
+    
+    if (error) { console.error("Failed to load saves:", error); return; }
+    
+    const slots = [...initialSaveSlots];
+    if (data) {
+      for (const row of data) {
+        const slotIdx = slots.findIndex(s => s.id === row.slot_number);
+        if (slotIdx !== -1) {
+          slots[slotIdx] = {
+            id: row.slot_number,
+            dbId: row.id,
+            isEmpty: false,
+            username: row.username,
+            difficulty: row.difficulty as Difficulty,
+            credits: row.credits,
+            characterId: row.character_id,
+            currentTreeIndex: row.current_tree_index,
+            currentNodeId: row.current_node_id,
+            currentHealth: row.current_health,
+            maxHealth: row.max_health,
+            completedNodes: (row.completed_nodes as string[]) ?? [],
+            inTreeInstance: row.in_tree_instance,
+            treeNodes: row.tree_nodes as unknown as TreeNode[] | null,
+            statUpgrades: (row.stat_upgrades as unknown as Record<string, StatUpgrades>) ?? {},
+            completedTreeNodes: row.completed_tree_nodes,
+            completedTrees: (row.completed_trees as number[]) ?? [],
+          };
+        }
+      }
+    }
+    set({ saveSlots: slots, saveSlotsLoaded: true });
+  },
+
+  persistSlotToDb: async (slotId: number) => {
+    const { saveSlots } = get();
+    const slot = saveSlots.find(s => s.id === slotId);
+    if (!slot || slot.isEmpty) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const payload = {
+      user_id: user.id,
+      slot_number: slot.id,
+      username: slot.username!,
+      difficulty: slot.difficulty!,
+      credits: slot.credits,
+      completed_trees: slot.completedTrees,
+      current_tree_index: slot.currentTreeIndex,
+      current_node_id: slot.currentNodeId,
+      current_health: slot.currentHealth,
+      max_health: slot.maxHealth,
+      character_id: slot.characterId,
+      completed_nodes: slot.completedNodes,
+      in_tree_instance: slot.inTreeInstance,
+      tree_nodes: slot.treeNodes as any,
+      stat_upgrades: slot.statUpgrades as any,
+      completed_tree_nodes: slot.completedTreeNodes,
+    };
+
+    if (slot.dbId) {
+      await supabase.from("summoner_saves").update(payload).eq("id", slot.dbId);
+    } else {
+      const { data } = await supabase.from("summoner_saves").insert(payload).select("id").maybeSingle();
+      if (data) {
+        const updatedSlots = saveSlots.map(s => s.id === slotId ? { ...s, dbId: data.id } : s);
+        set({ saveSlots: updatedSlots });
+      }
+    }
+  },
+
+  deleteSlotFromDb: async (slotId: number) => {
+    const { saveSlots } = get();
+    const slot = saveSlots.find(s => s.id === slotId);
+    if (!slot || !slot.dbId) return;
+    await supabase.from("summoner_saves").delete().eq("id", slot.dbId);
+  },
   
   setActiveSlot: (slot) => set({ activeSlot: slot }),
   
@@ -356,6 +450,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       s.id === activeSlot ? { ...s, difficulty } : s
     );
     set({ difficulty, saveSlots: updatedSlots });
+    get().persistSlotToDb(activeSlot!);
   },
   
   setCurrentTree: (treeIndex) => set({ currentTreeIndex: treeIndex }),
@@ -363,14 +458,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   createSaveSlot: (slotId, username) => {
     const { saveSlots } = get();
     const updatedSlots = saveSlots.map(s =>
-      s.id === slotId ? { ...s, isEmpty: false, username, credits: 0, statUpgrades: {} } : s
+      s.id === slotId ? { ...s, isEmpty: false, username, credits: 0, statUpgrades: {}, completedTrees: [] } : s
     );
     set({ saveSlots: updatedSlots, activeSlot: slotId });
   },
   
   deleteSaveSlot: (slotId) => {
-    const { saveSlots } = get();
-    const updatedSlots = saveSlots.map(s =>
+    get().deleteSlotFromDb(slotId);
+    const updatedSlots = get().saveSlots.map(s =>
       s.id === slotId ? { ...initialSaveSlots.find(is => is.id === slotId)! } : s
     );
     set({ saveSlots: updatedSlots });
@@ -381,6 +476,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!charDef) return;
     
     const stats = get().getEffectiveStats(characterId);
+    const { activeSlot, saveSlots } = get();
     
     set({
       character: {
@@ -397,6 +493,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         attackBuffTurns: 0,
       },
     });
+    // Store characterId on slot
+    const updatedSlots = saveSlots.map(s => s.id === activeSlot ? { ...s, characterId } : s);
+    set({ saveSlots: updatedSlots });
   },
   
   getEffectiveStats: (characterId) => {
@@ -407,21 +506,27 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slot = saveSlots.find(s => s.id === activeSlot);
     const upgrades = slot?.statUpgrades?.[characterId] ?? emptyUpgrades();
     
+    // Health: +5% per upgrade (round up), Offense: +10% per upgrade (round up), Defense: +10% per upgrade (round up)
+    const healthBonus = upgrades.health > 0 ? Math.ceil(charDef.baseStats.health * 0.05 * upgrades.health) : 0;
+    const offenseBonus = upgrades.offense > 0 ? Math.ceil(charDef.baseStats.offense * 0.10 * upgrades.offense) : 0;
+    const defenseBonus = upgrades.defense > 0 ? Math.ceil(charDef.baseStats.defense * 0.10 * upgrades.defense) : 0;
+    
     return {
-      health: charDef.baseStats.health + upgrades.health * 5,
-      energy: charDef.baseStats.energy + upgrades.energy,
-      offense: charDef.baseStats.offense + upgrades.offense * 2,
-      defense: charDef.baseStats.defense + upgrades.defense * 2,
-      cardDraw: charDef.baseStats.cardDraw + upgrades.cardDraw,
+      health: charDef.baseStats.health + healthBonus,
+      energy: charDef.baseStats.energy,
+      offense: charDef.baseStats.offense + offenseBonus,
+      defense: charDef.baseStats.defense + defenseBonus,
+      cardDraw: charDef.baseStats.cardDraw,
       deckSize: charDef.baseStats.deckSize,
       gold: charDef.baseStats.gold,
       luck: charDef.baseStats.luck,
-      armor: charDef.baseStats.armor + upgrades.armor * 2,
+      armor: charDef.baseStats.armor,
     };
   },
   
-  getCharacterDeck: (_characterId) => {
-    return buildStarterDeck();
+  getCharacterDeck: (characterId) => {
+    const stats = get().getEffectiveStats(characterId);
+    return buildStarterDeck(stats.offense, stats.defense);
   },
   
   getUpgradeCost: (characterId, stat) => {
@@ -429,7 +534,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const slot = saveSlots.find(s => s.id === activeSlot);
     const upgrades = slot?.statUpgrades?.[characterId] ?? emptyUpgrades();
     const level = upgrades[stat];
-    // First 5 upgrades cost 50, then +10 per subsequent
     if (level < 5) return 50;
     return 50 + (level - 4) * 10;
   },
@@ -453,16 +557,24 @@ export const useGameStore = create<GameState>((set, get) => ({
       } : s
     );
     set({ saveSlots: updatedSlots });
+    get().persistSlotToDb(activeSlot!);
     return true;
   },
   
   awardCredits: (bossDefeated, nodesCompleted) => {
-    const { activeSlot, saveSlots } = get();
+    const { activeSlot, saveSlots, currentTreeIndex } = get();
     const credits = bossDefeated ? 100 : Math.min(40, nodesCompleted * 4);
-    const updatedSlots = saveSlots.map(s =>
-      s.id === activeSlot ? { ...s, credits: s.credits + credits } : s
-    );
+    const updatedSlots = saveSlots.map(s => {
+      if (s.id !== activeSlot) return s;
+      const newSlot = { ...s, credits: s.credits + credits };
+      if (bossDefeated && currentTreeIndex !== null) {
+        const newCompleted = s.completedTrees.includes(currentTreeIndex) ? s.completedTrees : [...s.completedTrees, currentTreeIndex];
+        newSlot.completedTrees = newCompleted;
+      }
+      return newSlot;
+    });
     set({ saveSlots: updatedSlots });
+    get().persistSlotToDb(activeSlot!);
   },
   
   initializeTree: () => {
@@ -487,11 +599,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (!difficulty || currentTreeIndex === null || !character) return;
     
     const enemy = spawnEnemy(nodeType, difficulty, currentTreeIndex);
-    const fullDeck = buildStarterDeck();
+    const fullDeck = buildStarterDeck(character.offense, character.defense);
     const deck = shuffleArray([...fullDeck]);
-    const cardDraw = character.energy >= 4 ? 6 : 5; // Mystic draws more
+    const cardDraw = character.maxEnergy >= 4 ? 6 : 5;
     const hand = deck.splice(0, cardDraw);
     
+    // Clear buffs at encounter start
     set({
       inEncounter: true,
       enemy,
@@ -499,6 +612,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       hand,
       discardPile: [],
       currentEnergy: character.maxEnergy,
+      character: { ...character, attackBuff: 0, attackBuffTurns: 0, shield: 0 },
     });
   },
   
@@ -510,17 +624,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       const currentRow = currentNode?.row ?? 0;
       const isBossDefeated = currentNode?.type === "boss";
       
-      // Mark current node completed and disable all nodes on the same row
-      // Make nodes on the NEXT row available (only nodes that connect to completed nodes)
       const updatedNodes = treeNodes.map(node => {
         if (node.id === currentNodeId) {
           return { ...node, completed: true, available: false };
         }
-        // Disable all other nodes on the same row
         if (node.row === currentRow && node.id !== currentNodeId) {
           return { ...node, available: false };
         }
-        // Make next row nodes available if they connect to the completed node
         if (node.row === currentRow + 1 && node.connections.includes(currentNodeId)) {
           return { ...node, available: true };
         }
@@ -528,6 +638,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
       
       const newCompletedNodes = [...completedNodes, currentNodeId];
+      
+      // Clear buffs after encounter
+      const { character } = get();
+      const cleanChar = character ? { ...character, attackBuff: 0, attackBuffTurns: 0, shield: 0 } : null;
       
       set({
         inEncounter: false,
@@ -538,24 +652,38 @@ export const useGameStore = create<GameState>((set, get) => ({
         treeNodes: updatedNodes,
         completedNodes: newCompletedNodes,
         currentNodeId: null,
+        character: cleanChar,
       });
       
       if (isBossDefeated) {
         get().awardCredits(true, newCompletedNodes.length);
-        // Reset tree state but keep on summoner menu
+        // Save completed tree and reset tree state
+        const { activeSlot, saveSlots } = get();
+        const updatedSlots = saveSlots.map(s => s.id === activeSlot ? {
+          ...s, inTreeInstance: false, treeNodes: null, characterId: null,
+          currentTreeIndex: null, currentNodeId: null, currentHealth: null, maxHealth: null,
+          completedNodes: [], completedTreeNodes: 0,
+        } : s);
         set({
           treeNodes: [],
           completedNodes: [],
           character: null,
           currentTreeIndex: null,
+          saveSlots: updatedSlots,
         });
+        get().persistSlotToDb(activeSlot!);
       } else {
         get().saveProgress();
       }
     } else {
-      // Defeat - award partial credits
       const { completedNodes: cn } = get();
       get().awardCredits(false, cn.length);
+      const { activeSlot, saveSlots } = get();
+      const updatedSlots = saveSlots.map(s => s.id === activeSlot ? {
+        ...s, inTreeInstance: false, treeNodes: null, characterId: null,
+        currentTreeIndex: null, currentNodeId: null, currentHealth: null, maxHealth: null,
+        completedNodes: [], completedTreeNodes: 0,
+      } : s);
       set({
         inEncounter: false,
         enemy: null,
@@ -567,16 +695,45 @@ export const useGameStore = create<GameState>((set, get) => ({
         completedNodes: [],
         character: null,
         currentTreeIndex: null,
+        saveSlots: updatedSlots,
       });
+      get().persistSlotToDb(activeSlot!);
     }
+  },
+
+  emergeFromForest: () => {
+    const { completedNodes, activeSlot, saveSlots } = get();
+    get().awardCredits(false, completedNodes.length);
+    const updatedSlots = get().saveSlots.map(s => s.id === activeSlot ? {
+      ...s, inTreeInstance: false, treeNodes: null, characterId: null,
+      currentTreeIndex: null, currentNodeId: null, currentHealth: null, maxHealth: null,
+      completedNodes: [], completedTreeNodes: 0,
+    } : s);
+    set({
+      inEncounter: false,
+      enemy: null,
+      hand: [],
+      deck: [],
+      discardPile: [],
+      currentNodeId: null,
+      treeNodes: [],
+      completedNodes: [],
+      character: null,
+      currentTreeIndex: null,
+      saveSlots: updatedSlots,
+    });
+    get().persistSlotToDb(activeSlot!);
+  },
+
+  surrenderEncounter: () => {
+    get().emergeFromForest();
   },
   
   takeDamage: (damage) => {
     const { character } = get();
     if (!character) return;
     
-    const reducedDamage = Math.max(0, damage - Math.floor(damage * (character.defense / 100)));
-    let remainingDamage = reducedDamage;
+    let remainingDamage = damage;
     let newShield = character.shield;
     
     if (newShield > 0) {
@@ -596,8 +753,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   addShield: (amount) => {
     const { character } = get();
     if (!character) return;
-    const bonusShield = Math.floor(amount * (1 + character.defense / 100));
-    set({ character: { ...character, shield: character.shield + bonusShield } });
+    set({ character: { ...character, shield: character.shield + amount } });
   },
   
   playCard: (cardId, targetEnemy) => {
@@ -617,9 +773,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     let newCharacter = { ...character };
     
     if (card.type === "attack" && targetEnemy) {
-      let damage = card.value + character.offense;
+      let damage = card.value;
       if (character.attackBuffTurns > 0) {
-        damage = Math.floor(damage * (1 + character.attackBuff / 100));
+        damage = Math.ceil(damage * (1 + character.attackBuff / 100));
       }
       if (newEnemy.shield > 0) {
         if (newEnemy.shield >= damage) {
@@ -632,8 +788,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       newEnemy.currentHealth = Math.max(0, newEnemy.currentHealth - damage);
     } else if (card.type === "skill") {
-      const shieldAmount = card.value + Math.floor(card.value * (character.defense / 100));
-      newCharacter.shield += shieldAmount;
+      newCharacter.shield += card.value;
     } else if (card.type === "power") {
       newCharacter.attackBuff = card.value;
       newCharacter.attackBuffTurns = 2;
@@ -655,6 +810,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     let newCharacter = { ...character };
     let newEnemy = { ...enemy };
     
+    // Enemy shield expires after 1 round
+    if (newEnemy.shieldTurnsLeft > 0) {
+      newEnemy.shieldTurnsLeft -= 1;
+      if (newEnemy.shieldTurnsLeft === 0) {
+        newEnemy.shield = 0;
+      }
+    }
+    
+    // Execute enemy action
     if (enemy.intent === "attack") {
       let damage = enemy.intentValue;
       if (newCharacter.shield > 0) {
@@ -668,11 +832,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       newCharacter.currentHealth = Math.max(0, newCharacter.currentHealth - damage);
     } else {
-      newEnemy.shield += enemy.intentValue;
+      // Shield does not stack - replace
+      newEnemy.shield = enemy.intentValue;
+      newEnemy.shieldTurnsLeft = 1;
     }
     
-    // New enemy intent
-    const newIntent = Math.random() > 0.5 ? "attack" : "shield";
+    // New enemy intent: 70% attack, 30% shield
+    const newIntent: "attack" | "shield" = Math.random() < 0.7 ? "attack" : "shield";
     const newIntentValue = newIntent === "attack"
       ? Math.round(enemy.baseDamageMin + Math.random() * (enemy.baseDamageMax - enemy.baseDamageMin))
       : Math.round(10 + Math.random() * 10);
@@ -688,7 +854,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
     
-    // Reset shield at start of turn (like STS)
+    // Reset player shield at start of turn
     newCharacter.shield = 0;
     
     // Discard remaining hand, then draw new cards
@@ -697,7 +863,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     
     const drawCount = newCharacter.maxEnergy >= 4 ? 6 : 5;
     
-    // If deck doesn't have enough, shuffle discard into deck
     if (newDeck.length < drawCount) {
       newDeck = shuffleArray([...newDeck, ...newDiscard]);
       newDiscard = [];
@@ -751,6 +916,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           maxHealth: character?.maxHealth ?? slot.maxHealth,
           completedNodes,
           inTreeInstance: treeNodes.length > 0,
+          treeNodes: treeNodes.length > 0 ? treeNodes : null,
           completedTreeNodes: completedNodes.length,
         };
       }
@@ -758,6 +924,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     
     set({ saveSlots: updatedSlots });
+    get().persistSlotToDb(activeSlot);
   },
   
   loadSlot: (slotId) => {
@@ -770,7 +937,31 @@ export const useGameStore = create<GameState>((set, get) => ({
       difficulty: slot.difficulty,
       currentTreeIndex: slot.currentTreeIndex,
       completedNodes: slot.completedNodes,
+      treeNodes: slot.treeNodes ?? [],
     });
+
+    // Restore character if in tree
+    if (slot.inTreeInstance && slot.characterId) {
+      const charDef = CHARACTERS.find(c => c.id === slot.characterId);
+      if (charDef) {
+        const stats = get().getEffectiveStats(slot.characterId);
+        set({
+          character: {
+            id: slot.characterId,
+            name: charDef.name,
+            maxHealth: slot.maxHealth ?? stats.health,
+            currentHealth: slot.currentHealth ?? stats.health,
+            energy: stats.energy,
+            maxEnergy: stats.energy,
+            shield: 0,
+            offense: stats.offense,
+            defense: stats.defense,
+            attackBuff: 0,
+            attackBuffTurns: 0,
+          },
+        });
+      }
+    }
   },
   
   resetRun: () => {
