@@ -4,92 +4,94 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Fantasy Card Battler Design System */
+/* Verdant Void Design System — Forest meets Void */
 
 @layer base {
   :root {
-    /* Dark fantasy palette */
-    --background: 240 15% 8%;
-    --foreground: 45 30% 90%;
+    /* Deep void palette with purple undertones */
+    --background: 270 20% 6%;
+    --foreground: 160 20% 88%;
 
-    --card: 240 12% 12%;
-    --card-foreground: 45 30% 90%;
+    --card: 270 18% 10%;
+    --card-foreground: 160 20% 88%;
 
-    --popover: 240 12% 10%;
-    --popover-foreground: 45 30% 90%;
+    --popover: 270 18% 8%;
+    --popover-foreground: 160 20% 88%;
 
-    /* Gold accent for primary actions */
-    --primary: 45 80% 50%;
-    --primary-foreground: 240 15% 8%;
+    /* Ethereal green-gold for primary actions */
+    --primary: 140 60% 45%;
+    --primary-foreground: 270 20% 6%;
 
-    /* Deep burgundy for secondary */
-    --secondary: 350 40% 25%;
-    --secondary-foreground: 45 30% 90%;
+    /* Deep violet for secondary */
+    --secondary: 280 40% 25%;
+    --secondary-foreground: 160 20% 88%;
 
-    --muted: 240 10% 18%;
-    --muted-foreground: 240 8% 55%;
+    --muted: 270 15% 15%;
+    --muted-foreground: 270 10% 50%;
 
-    /* Mystical purple accent */
-    --accent: 270 50% 40%;
-    --accent-foreground: 45 30% 90%;
+    /* Void purple accent */
+    --accent: 280 60% 50%;
+    --accent-foreground: 160 20% 88%;
 
-    /* Blood red for destructive */
-    --destructive: 0 70% 45%;
-    --destructive-foreground: 45 30% 90%;
+    /* Corrupted red for destructive */
+    --destructive: 350 70% 45%;
+    --destructive-foreground: 160 20% 88%;
 
-    --border: 240 10% 20%;
-    --input: 240 10% 15%;
-    --ring: 45 80% 50%;
+    --border: 270 15% 18%;
+    --input: 270 15% 12%;
+    --ring: 140 60% 45%;
 
     --radius: 0.25rem;
 
     /* Game-specific colors */
     --health: 0 65% 50%;
     --energy: 200 80% 50%;
-    --gold: 45 90% 55%;
+    --gold: 50 90% 55%;
     --armor: 210 15% 50%;
     --attack: 15 80% 55%;
     --defense: 200 60% 45%;
+    --void-glow: 280 70% 60%;
+    --chill: 200 80% 60%;
+    --burn: 20 90% 55%;
 
-    --sidebar-background: 240 12% 10%;
-    --sidebar-foreground: 45 30% 90%;
-    --sidebar-primary: 45 80% 50%;
-    --sidebar-primary-foreground: 240 15% 8%;
-    --sidebar-accent: 270 50% 40%;
-    --sidebar-accent-foreground: 45 30% 90%;
-    --sidebar-border: 240 10% 20%;
-    --sidebar-ring: 45 80% 50%;
+    --sidebar-background: 270 18% 8%;
+    --sidebar-foreground: 160 20% 88%;
+    --sidebar-primary: 140 60% 45%;
+    --sidebar-primary-foreground: 270 20% 6%;
+    --sidebar-accent: 280 60% 50%;
+    --sidebar-accent-foreground: 160 20% 88%;
+    --sidebar-border: 270 15% 18%;
+    --sidebar-ring: 140 60% 45%;
   }
 
   .dark {
-    /* Same as root - game is dark by default */
-    --background: 240 15% 8%;
-    --foreground: 45 30% 90%;
-    --card: 240 12% 12%;
-    --card-foreground: 45 30% 90%;
-    --popover: 240 12% 10%;
-    --popover-foreground: 45 30% 90%;
-    --primary: 45 80% 50%;
-    --primary-foreground: 240 15% 8%;
-    --secondary: 350 40% 25%;
-    --secondary-foreground: 45 30% 90%;
-    --muted: 240 10% 18%;
-    --muted-foreground: 240 8% 55%;
-    --accent: 270 50% 40%;
-    --accent-foreground: 45 30% 90%;
-    --destructive: 0 70% 45%;
-    --destructive-foreground: 45 30% 90%;
-    --border: 240 10% 20%;
-    --input: 240 10% 15%;
-    --ring: 45 80% 50%;
-    --sidebar-background: 240 12% 10%;
-    --sidebar-foreground: 45 30% 90%;
-    --sidebar-primary: 45 80% 50%;
-    --sidebar-primary-foreground: 240 15% 8%;
-    --sidebar-accent: 270 50% 40%;
-    --sidebar-accent-foreground: 45 30% 90%;
-    --sidebar-border: 240 10% 20%;
-    --sidebar-ring: 45 80% 50%;
+    --background: 270 20% 6%;
+    --foreground: 160 20% 88%;
+    --card: 270 18% 10%;
+    --card-foreground: 160 20% 88%;
+    --popover: 270 18% 8%;
+    --popover-foreground: 160 20% 88%;
+    --primary: 140 60% 45%;
+    --primary-foreground: 270 20% 6%;
+    --secondary: 280 40% 25%;
+    --secondary-foreground: 160 20% 88%;
+    --muted: 270 15% 15%;
+    --muted-foreground: 270 10% 50%;
+    --accent: 280 60% 50%;
+    --accent-foreground: 160 20% 88%;
+    --destructive: 350 70% 45%;
+    --destructive-foreground: 160 20% 88%;
+    --border: 270 15% 18%;
+    --input: 270 15% 12%;
+    --ring: 140 60% 45%;
+    --sidebar-background: 270 18% 8%;
+    --sidebar-foreground: 160 20% 88%;
+    --sidebar-primary: 140 60% 45%;
+    --sidebar-primary-foreground: 270 20% 6%;
+    --sidebar-accent: 280 60% 50%;
+    --sidebar-accent-foreground: 160 20% 88%;
+    --sidebar-border: 270 15% 18%;
+    --sidebar-ring: 140 60% 45%;
   }
 }
 
@@ -130,18 +132,60 @@
   }
 
   .glow-gold {
-    text-shadow: 0 0 10px hsl(45 90% 55% / 0.5),
-                 0 0 20px hsl(45 90% 55% / 0.3),
-                 0 0 40px hsl(45 90% 55% / 0.2);
+    text-shadow: 0 0 10px hsl(140 60% 45% / 0.5),
+                 0 0 20px hsl(140 60% 45% / 0.3),
+                 0 0 40px hsl(140 60% 45% / 0.15);
+  }
+
+  .glow-void {
+    text-shadow: 0 0 10px hsl(280 70% 60% / 0.5),
+                 0 0 20px hsl(280 70% 60% / 0.3),
+                 0 0 40px hsl(280 70% 60% / 0.15);
   }
 
   .card-glow {
-    box-shadow: 0 0 15px hsl(45 80% 50% / 0.2),
+    box-shadow: 0 0 15px hsl(280 60% 50% / 0.2),
                 0 4px 20px hsl(0 0% 0% / 0.4);
   }
 
   .fantasy-border {
-    border: 1px solid hsl(45 80% 50% / 0.3);
+    border: 1px solid hsl(280 60% 50% / 0.3);
     box-shadow: inset 0 0 20px hsl(0 0% 0% / 0.3);
+  }
+
+  .void-bg {
+    background: radial-gradient(ellipse at 50% 30%, hsl(280 40% 12%) 0%, hsl(270 20% 6%) 70%);
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(3px); }
+  }
+
+  .animate-shake {
+    animation: shake 0.4s ease-in-out;
+  }
+
+  @keyframes damage-drop {
+    0% { opacity: 1; transform: translateY(-10px); }
+    20% { opacity: 1; transform: translateY(0); }
+    80% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(20px); }
+  }
+
+  .animate-damage-drop {
+    animation: damage-drop 2s ease-out forwards;
+  }
+
+  @keyframes count-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+  }
+
+  .animate-count-pulse {
+    animation: count-pulse 0.15s ease-in-out;
   }
 }

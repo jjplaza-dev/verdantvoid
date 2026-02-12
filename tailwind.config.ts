@@ -64,6 +64,9 @@ export default {
         armor: "hsl(var(--armor))",
         attack: "hsl(var(--attack))",
         defense: "hsl(var(--defense))",
+        "void-glow": "hsl(var(--void-glow))",
+        chill: "hsl(var(--chill))",
+        burn: "hsl(var(--burn))",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -72,20 +75,12 @@ export default {
       },
       keyframes: {
         "accordion-down": {
-          from: {
-            height: "0",
-          },
-          to: {
-            height: "var(--radix-accordion-content-height)",
-          },
+          from: { height: "0" },
+          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
-          from: {
-            height: "var(--radix-accordion-content-height)",
-          },
-          to: {
-            height: "0",
-          },
+          from: { height: "var(--radix-accordion-content-height)" },
+          to: { height: "0" },
         },
       },
       animation: {
