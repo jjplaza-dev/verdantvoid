@@ -1,10 +1,11 @@
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ArrowLeft, Coins, Sword, Shield, Zap, Heart, Swords, TreePine, ChevronUp } from "lucide-react";
 import { useGameStore, CHARACTERS, type StatUpgrades } from "@/stores/gameStore";
+import { useAudioStore } from "@/stores/audioStore";
 
 const iconMap: Record<string, any> = { Sword, Shield, Zap };
 
@@ -17,8 +18,11 @@ const upgradableStats: { key: keyof StatUpgrades; label: string; icon: any }[] =
 const SummonerMenu = () => {
   const navigate = useNavigate();
   const { saveSlots, activeSlot, getEffectiveStats, getUpgradeCost, upgradeStat, getCharacterDeck } = useGameStore();
+  const { playMenuMusic } = useAudioStore();
   const [selectedChampion, setSelectedChampion] = useState<string | null>(null);
   const [showDeck, setShowDeck] = useState(false);
+
+  useEffect(() => { playMenuMusic(); }, [playMenuMusic]);
 
   const slot = saveSlots.find(s => s.id === activeSlot);
   if (!slot) return null;

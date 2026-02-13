@@ -4,37 +4,32 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Save, Trash2, Play, Coins } from "lucide-react";
+import { ArrowLeft, Save, Trash2, Play, Coins, Loader2 } from "lucide-react";
 import { useGameStore, DIFFICULTIES } from "@/stores/gameStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useAudioStore } from "@/stores/audioStore";
 
 const SaveSlots = () => {
   const navigate = useNavigate();
   const { saveSlots, setActiveSlot, loadSlot, createSaveSlot, deleteSaveSlot, loadSaveSlotsFromDb, saveSlotsLoaded } = useGameStore();
   const { user } = useAuthStore();
+  const { playMenuMusic } = useAudioStore();
   const [createModal, setCreateModal] = useState<number | null>(null);
   const [deleteModal, setDeleteModal] = useState<number | null>(null);
   const [usernameInput, setUsernameInput] = useState("");
   const [deleteInput, setDeleteInput] = useState("");
 
+  useEffect(() => { playMenuMusic(); }, [playMenuMusic]);
+
   useEffect(() => {
-    if (user && !saveSlotsLoaded) {
-      loadSaveSlotsFromDb(user.id);
-    }
+    if (user && !saveSlotsLoaded) loadSaveSlotsFromDb(user.id);
   }, [user, saveSlotsLoaded, loadSaveSlotsFromDb]);
 
   const handleSlotClick = (slotId: number) => {
     const slot = saveSlots.find(s => s.id === slotId);
     if (!slot) return;
-    if (slot.isEmpty) {
-      setCreateModal(slotId);
-      setUsernameInput("");
-    } else {
-      setActiveSlot(slotId);
-      loadSlot(slotId);
-      navigate(slot.inTreeInstance ? "/tree-instance" : "/summoner-menu");
-    }
+    if (slot.isEmpty) { setCreateModal(slotId); setUsernameInput(""); }
+    else { setActiveSlot(slotId); loadSlot(slotId); navigate(slot.inTreeInstance ? "/tree-instance" : "/summoner-menu"); }
   };
 
   const handleCreateSubmit = () => {
@@ -65,27 +60,15 @@ const SaveSlots = () => {
         </div>
 
         {!saveSlotsLoaded ? (
-          <div className="flex flex-col gap-4">
-            {[1, 2, 3].map(i => (
-              <Card key={i} className="fantasy-border">
-                <CardHeader className="flex flex-row items-center gap-4">
-                  <Skeleton className="h-12 w-12 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-5 w-32" />
-                    <Skeleton className="h-4 w-48" />
-                  </div>
-                </CardHeader>
-              </Card>
-            ))}
+          <div className="flex flex-col items-center justify-center py-16 gap-4">
+            <Loader2 className="h-10 w-10 text-primary animate-spin" />
+            <p className="font-body text-muted-foreground">Loading saves...</p>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
             {saveSlots.map((slot) => (
-              <Card
-                key={slot.id}
-                className="group cursor-pointer fantasy-border transition-all duration-300 hover:card-glow hover:scale-[1.01]"
-                onClick={() => handleSlotClick(slot.id)}
-              >
+              <Card key={slot.id} className="group cursor-pointer fantasy-border transition-all duration-300 hover:card-glow hover:scale-[1.01]"
+                onClick={() => handleSlotClick(slot.id)}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -97,10 +80,7 @@ const SaveSlots = () => {
                         {slot.isEmpty ? "Empty - Start New Game" : (
                           <span className="flex items-center gap-3">
                             <span>{slot.difficulty ? DIFFICULTIES[slot.difficulty]?.label : "Unknown"}</span>
-                            <span className="flex items-center gap-1">
-                              <Coins className="h-3 w-3 text-gold" />
-                              <span className="text-gold">{slot.credits}</span>
-                            </span>
+                            <span className="flex items-center gap-1"><Coins className="h-3 w-3 text-gold" /><span className="text-gold">{slot.credits}</span></span>
                           </span>
                         )}
                       </CardDescription>

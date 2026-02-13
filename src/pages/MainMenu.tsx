@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { TreePine } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuthStore } from "@/stores/authStore";
+import { useAudioStore } from "@/stores/audioStore";
 
 const MainMenu = () => {
   const navigate = useNavigate();
@@ -12,6 +13,9 @@ const MainMenu = () => {
   const subtitleRef = useRef<HTMLParagraphElement>(null);
   const buttonsRef = useRef<HTMLDivElement>(null);
   const { user, setUser } = useAuthStore();
+  const { playMenuMusic } = useAudioStore();
+
+  useEffect(() => { playMenuMusic(); }, [playMenuMusic]);
 
   useEffect(() => {
     supabase.auth.onAuthStateChange((event, session) => {
